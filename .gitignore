@@ -1,0 +1,17 @@
+# Python
+.python-version
+*.pyc
+__pycache__/
+
+# Misc
+/.vscode/
+/dataset/
+.DS_Store
+*tmp*
+*.csv
+*.zip
+*.txt
+b06902074
+
+ckpt/*
+cache
