@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer
 
 
-class MatchDataset(Dataset):
+class QADataset(Dataset):
     def __init__(self, data: List[Dict], tokenizer: BertTokenizer, max_len: int = 512):
         self.data = data
         self.tokenizer = tokenizer
@@ -20,74 +20,58 @@ class MatchDataset(Dataset):
         instance = self.data[index]
         return instance
 
-    def train_collate_fn(self, samples: List[Dict]) -> Dict:
+    def collate_fn(self, samples: List[Dict]) -> Dict:
         tokens = []
-        labels = []
+        start = []
+        end = []
+        index = []
+        label = []
 
         for s in samples:
-            for text in s["paragraphs"][random.choice(s["incorrect"])]:
-                token = ["[CLS]"] + s["question"] + ["SEP"] + text
-                token += ["[PAD]"] * (self.max_len - len(token))
-                tokens.append(self.tokenizer.convert_tokens_to_ids(token))
-                labels.append(0)
+            for idx in [
+                random.choice(s["relevant_index"]),
+                random.choice(s["irrelevant_index"]),
+            ]:
+                token = self.construct(
+                    s["question"], s["paragraph"][idx], s["start_end"][idx]
+                )
 
-            for idx, text in enumerate(s["paragraphs"][s["correct"]]):
-                token = ["[CLS]"] + s["question"] + ["SEP"] + text
-                token += ["[PAD]"] * (self.max_len - len(token))
-                tokens.append(self.tokenizer.convert_tokens_to_ids(token))
-
-                label = 0
-                for ans in s["answers"]:
-                    if idx * len(text) <= ans["start"] < (idx + 1) * len(text):
-                        label = 1
-
-                labels.append(label)
-
-        index = [i for i in range(len(tokens))]
-        random.shuffle(index)
-
-        tokens = [tokens[i] for i in index]
-        labels = [labels[i] for i in index]
+                index.append(token["index"])
+                tokens.append(token["token"])
+                start.append(token["start"])
+                end.append(token["end"])
+                label.append(int(start != -1 or end != -1))
 
         return {
             "token": torch.tensor(tokens, dtype=torch.long),
-            "label": torch.tensor(labels, dtype=torch.float),
+            "start": torch.tensor(start, dtype=torch.long),
+            "end": torch.tensor(end, dtype=torch.long),
+            "index": torch.tensor(index, dtype=torch.long),
+            "label": label,
         }
 
-    def val_collate_fn(self, samples: List[Dict]) -> Dict:
-        tokens = []
-        labels = []
+    def construct(
+        self, question: List[str], paragraph: List[str], start_end: List[List]
+    ) -> Dict:
+        index = [len(question) + 2, len(question) + 2 + len(paragraph)]
 
-        for s in samples:
-            for idx in s["incorrect"]:
-                for text in s["paragraphs"][idx]:
-                    token = ["[CLS]"] + s["question"] + ["SEP"] + text
-                    token += ["[PAD]"] * (self.max_len - len(token))
-                    tokens.append(self.tokenizer.convert_tokens_to_ids(token))
-                    labels.append(0)
+        token = ["[CLS]"] + question + ["SEP"] + paragraph
+        padding_len = self.max_len - len(token)
+        token += ["[PAD]"] * padding_len
+        token = self.tokenizer.convert_tokens_to_ids(token)
 
-            for idx, text in enumerate(s["paragraphs"][s["correct"]]):
-                token = ["[CLS]"] + s["question"] + ["SEP"] + text
-                token += ["[PAD]"] * (self.max_len - len(token))
-                tokens.append(self.tokenizer.convert_tokens_to_ids(token))
+        start = (
+            [-100 for _ in range(len(question) + 2)]
+            + [1 if start_end[0] == i else 0 for i in range(len(paragraph))]
+            + [-100 for _ in range(padding_len)]
+        )
+        end = (
+            [-100 for _ in range(len(question) + 2)]
+            + [1 if start_end[1] == i else 0 for i in range(len(paragraph))]
+            + [-100 for _ in range(padding_len)]
+        )
 
-                label = 0
-                for ans in s["answers"]:
-                    if idx * len(text) <= ans["start"] < (idx + 1) * len(text):
-                        label = 1
-
-                labels.append(label)
-
-        index = [i for i in range(len(tokens))]
-        random.shuffle(index)
-
-        tokens = [tokens[i] for i in index]
-        labels = [labels[i] for i in index]
-
-        return {
-            "token": torch.tensor(tokens, dtype=torch.long),
-            "label": torch.tensor(labels, dtype=torch.float),
-        }
+        return {"index": index, "token": token, "start": start, "end": end}
 
 
 if __name__ == "__main__":
@@ -96,12 +80,14 @@ if __name__ == "__main__":
     with open("cache/train.json", "r") as f:
         data = json.load(f)
 
-    dataset = MatchDataset(data, tokenizer)
+    dataset = QADataset(data, tokenizer)
     dataloader = DataLoader(
-        dataset, shuffle=True, batch_size=32, collate_fn=dataset.val_collate_fn
+        dataset, shuffle=True, batch_size=32, collate_fn=dataset.collate_fn
     )
 
     for d in dataloader:
         print(d["token"])
-        print(d["label"])
+        print(d["start"])
+        print(d["end"])
+        print(d["index"])
         print()

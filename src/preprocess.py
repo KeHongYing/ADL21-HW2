@@ -1,5 +1,7 @@
 import json
 import random
+import re
+from typing import List
 
 import logging
 from argparse import ArgumentParser, Namespace
@@ -16,12 +18,27 @@ logging.basicConfig(
 )
 
 
+def find_token_pos(start_idx: int, paragraph_token: List[str]) -> int:
+    cnt = 0
+
+    for idx, token in enumerate(paragraph_token):
+        cnt += len(re.sub("#", "", token))
+        if start_idx < cnt:
+            return idx
+
+    print(start_idx)
+    print(paragraph_token)
+    print(len(paragraph_token))
+    print(cnt)
+    raise IndexError
+
+
 def train_val_split(data, test_size=0.2, shuffle=True):
     if shuffle:
         random.shuffle(data)
 
-    train = data[int(0.2 * len(data)) :]
-    val = data[: int(0.2 * len(data))]
+    train = data[int(test_size * len(data)) :]
+    val = data[: int(test_size * len(data))]
 
     return train, val
 
@@ -41,50 +58,59 @@ def main(args):
     for d in tqdm(data, desc="preprocessing data..."):
         Id = d["id"]
         question = tokenizer.tokenize(d["question"])
-        paragraphs = [
-            [
-                tokenizer.tokenize(
-                    context[idx][
-                        i
-                        * (max_len - len(question)) : (i + 1)
-                        * (max_len - len(question))
-                    ]
-                )
-                for i in range(
-                    np.ceil(len(context[idx]) / (max_len - len(question))).astype(
-                        np.int64
-                    )
-                )
-            ]
-            for idx in d["paragraphs"]
+
+        paragraph = [
+            tokenizer.tokenize(context[context_idx]) for context_idx in d["paragraphs"]
         ]
 
-        relevant = -1
-        correct, incorrect = -1, []
-        if "relevant" in d:
-            relevant = d["relevant"]
-            correct = d["paragraphs"].index(relevant)
-            incorrect = [
-                idx
-                for idx, context_id in enumerate(d["paragraphs"])
-                if context_id != relevant
-            ]
-
-        answers = []
+        start_list = []
+        end_list = []
         if "answers" in d:
-            answers = d["answers"]
-            for i in range(len(answers)):
-                answers[i]["text"] = tokenizer.tokenize(answers[i]["text"])
+            for ans in d["answers"]:
+                ans_token = tokenizer.tokenize(ans["text"])
+                start_token_pos = len(
+                    tokenizer.tokenize(context[d["relevant"]][: ans["start"]])
+                )
+                end_token_pos = start_token_pos + len(ans_token) - 1
+
+                start_list.append(start_token_pos)
+                end_list.append(end_token_pos)
+
+        context_len = max_len - len(question)
+        paragraph_index = []
+        paragraph_context = []
+        paragraph_start_end = []
+        relevant_index = []
+        irrelevant_index = []
+        for idx, p in enumerate(paragraph):
+            for i in range(np.ceil(len(p) / context_len).astype(np.int64)):
+                start, end = -1, -1
+                if idx == d["paragraphs"].index(d["relevant"]):
+                    for s in start_list:
+                        if i * context_len <= s < (i + 1) * context_len:
+                            start = s % context_len
+                    for e in end_list:
+                        if i * context_len <= e < (i + 1) * context_len:
+                            end = e % context_len
+
+                if start != -1 or end != -1:
+                    relevant_index.append(len(paragraph_index))
+                else:
+                    irrelevant_index.append(len(paragraph_index))
+
+                paragraph_index.append(d["paragraphs"][idx])
+                paragraph_context.append(p[i * context_len : (i + 1) * context_len])
+                paragraph_start_end.append([start, end])
 
         output.append(
             {
                 "id": Id,
                 "question": question,
-                "paragraphs": paragraphs,
-                "relevant": relevant,
-                "answers": answers,
-                "correct": correct,
-                "incorrect": incorrect,
+                "paragraph": paragraph_context,
+                "start_end": paragraph_start_end,
+                "paragragh_index": paragraph_index,
+                "relevant_index": relevant_index,
+                "irrelevant_index": irrelevant_index,
             }
         )
 
@@ -92,9 +118,9 @@ def main(args):
         train, val = train_val_split(output, test_size=0.1)
 
         with open(args.output_dir / "train.json", "w") as f:
-            json.dump(train, f)
+            json.dump(train, f, ensure_ascii=False, indent=4)
         with open(args.output_dir / "val.json", "w") as f:
-            json.dump(val, f)
+            json.dump(val, f, ensure_ascii=False, indent=4)
     else:
         with open(args.output_dir / args.data, "w") as f:
             json.dump(output, f)
