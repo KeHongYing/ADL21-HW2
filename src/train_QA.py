@@ -5,6 +5,7 @@ from typing import Dict
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from transformers import BertTokenizer
 
@@ -17,7 +18,6 @@ SPLITS = [TRAIN, DEV]
 
 
 def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
-    size = 2 * len(dataloader.dataset)
     total_start_correct, total_end_correct = 0, 0
     total_start_sentence_correct, total_end_sentence_correct = 0, 0
     total_start_loss, total_end_loss = 0, 0
@@ -29,125 +29,110 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
     elif mode == DEV:
         model.eval()
 
-    for batch, data in enumerate(dataloader):
-        start_correct, end_correct = 0, 0
-        start_sentence_correct, end_sentence_correct = 0, 0
-        cnt += 1
+    with torch.set_grad_enabled(mode == TRAIN):
+        with tqdm(dataloader, unit="batch") as tepoch:
+            for data in tepoch:
+                tepoch.set_description(f"[{mode:>5}]")
 
-        token = data["token"].to(device)
-        start = data["start"].to(device)
-        end = data["end"].to(device)
-        index = data["index"].to(device)
+                start_correct, end_correct = 0, 0
+                start_sentence_correct, end_sentence_correct = 0, 0
+                cnt += 1
 
-        pred = model(token)
+                token = data["token"].to(device)
+                start = data["start"].to(device)
+                end = data["end"].to(device)
+                index = data["index"].to(device)
 
-        start_loss = loss_fn(pred["start"].transpose(1, 2), start)
-        end_loss = loss_fn(pred["end"].transpose(1, 2), end)
+                pred = model(token)
 
-        count = 0
-        for idx, (head, tail) in enumerate(index):
-            start_correct += (
-                (pred["start"][idx][head:tail].argmax(dim=-1) == start[idx][head:tail])
-                .type(torch.float)
-                .sum()
-                .item()
-            )
-            end_correct += (
-                (pred["end"][idx][head:tail].argmax(dim=-1) == end[idx][head:tail])
-                .type(torch.float)
-                .sum()
-                .item()
-            )
-            start_sentence_correct += (
-                torch.all(
-                    pred["start"][idx][head:tail].argmax(dim=-1)
-                    == start[idx][head:tail],
-                    dim=-1,
+                start_loss = loss_fn(pred["start"].transpose(1, 2), start)
+                end_loss = loss_fn(pred["end"].transpose(1, 2), end)
+
+                count = 0
+                for idx, (head, tail) in enumerate(index):
+                    start_correct += (
+                        (
+                            pred["start"][idx][head:tail].argmax(dim=-1)
+                            == start[idx][head:tail]
+                        )
+                        .type(torch.float)
+                        .sum()
+                        .item()
+                    )
+                    end_correct += (
+                        (
+                            pred["end"][idx][head:tail].argmax(dim=-1)
+                            == end[idx][head:tail]
+                        )
+                        .type(torch.float)
+                        .sum()
+                        .item()
+                    )
+                    start_sentence_correct += (
+                        torch.all(
+                            pred["start"][idx][head:tail].argmax(dim=-1)
+                            == start[idx][head:tail],
+                            dim=-1,
+                        )
+                        .sum()
+                        .item()
+                    )
+                    end_sentence_correct += (
+                        torch.all(
+                            pred["end"][idx][head:tail].argmax(dim=-1)
+                            == end[idx][head:tail],
+                            dim=-1,
+                        )
+                        .sum()
+                        .item()
+                    )
+                    count += tail - head
+
+                total_start_correct += start_correct
+                total_end_correct += end_correct
+                total_start_sentence_correct += start_sentence_correct
+                total_end_sentence_correct += end_sentence_correct
+                total_start_loss += start_loss
+                total_end_loss += end_loss
+
+                start_correct /= count
+                end_correct /= count
+
+                start_sentence_correct /= pred["start"].shape[0]
+                end_sentence_correct /= pred["end"].shape[0]
+
+                if mode == TRAIN:
+                    optimizer.zero_grad()
+                    (start_loss + end_loss).backward()
+                    optimizer.step()
+
+                current += token.shape[0]
+
+                tepoch.set_postfix(
+                    s_loss=f"{start_loss.item():>.4f}",
+                    e_loss=f"{end_loss.item():>.4f}",
+                    s_Acc=f"{start_correct:>.5f}",
+                    e_Acc=f"{end_correct:>.5f}",
+                    s_sent_Acc=f"{start_sentence_correct:>.2f}",
+                    e_sent_Acc=f"{end_sentence_correct:>.2f}",
                 )
-                .sum()
-                .item()
+
+            total_start_correct /= current
+            total_end_correct /= current
+            total_start_sentence_correct /= current
+            total_end_sentence_correct /= current
+            total_start_loss /= cnt
+            total_end_loss /= cnt
+            print(
+                "\033[2K\033[2K"
+                + f"[{mode:>5}] "
+                + f" start Acc: {total_start_correct:>.2f},"
+                + f" end Acc: {total_end_correct:>.2f},"
+                + f" start sent. Acc: {total_start_sentence_correct:>.2f},"
+                + f" end sent. Acc: {total_end_sentence_correct:>.2f},"
+                + f" start loss: {total_start_loss:>.5f},"
+                + f" end loss: {total_end_loss:>.5f},",
             )
-            end_sentence_correct += (
-                torch.all(
-                    pred["end"][idx][head:tail].argmax(dim=-1) == end[idx][head:tail],
-                    dim=-1,
-                )
-                .sum()
-                .item()
-            )
-            count += tail - head
-        start_correct /= count
-        end_correct /= count
-        # start_correct = (
-        #     (pred["start"].argmax(dim=-1) == start).type(torch.float).sum().item()
-        # ) / start.shape[1]
-        # end_correct = (pred["end"].argmax(dim=-1) == end).type(
-        #     torch.float
-        # ).sum().item() / end.shape[1]
-
-        # start_sentence_correct = (
-        #     torch.all(pred["start"].argmax(dim=-1) == start, dim=-1)
-        #     .type(torch.float)
-        #     .sum()
-        #     .item()
-        # )
-        # end_sentence_correct = (
-        #     torch.all(pred["start"].argmax(dim=-1) == start, dim=-1)
-        #     .type(torch.float)
-        #     .sum()
-        #     .item()
-        # )
-
-        total_start_correct += start_correct
-        total_end_correct += end_correct
-        total_start_sentence_correct += start_sentence_correct
-        total_end_sentence_correct += end_sentence_correct
-        total_start_loss += start_loss
-        total_end_loss += end_loss
-
-        # start_correct /= pred["start"].shape[0]
-        # end_correct /= pred["end"].shape[0]
-
-        start_sentence_correct /= pred["start"].shape[0]
-        end_sentence_correct /= pred["end"].shape[0]
-
-        if mode == TRAIN:
-            optimizer.zero_grad()
-            (start_loss + end_loss).backward()
-            optimizer.step()
-
-        current += token.shape[0]
-        print(
-            "\033[2K\033[2K"
-            + f"[{mode:>5}] "
-            + f"start Acc: {(100 * start_correct):>4.1f}%,"
-            + f" end Acc: {(100 * end_correct):>4.1f}%,"
-            + f" start sent. Acc: {(100 * start_sentence_correct):>4.1f}%,"
-            + f" end sent. Acc: {(100 * end_sentence_correct):>4.1f}%,"
-            + f" start loss: {start_loss:>7f},"
-            + f" end loss: {end_loss:>7f},"
-            + f" [{current:>6d}/{size:>6d}]",
-            end="\r",
-        )
-
-    total_start_correct /= current
-    total_end_correct /= current
-    total_start_sentence_correct /= current
-    total_end_sentence_correct /= current
-    total_start_loss /= cnt
-    total_end_loss /= cnt
-    print(
-        "\033[2K\033[2K"
-        + f"[{mode:>5}] "
-        + f"start Acc: {(100 * total_start_correct):>4.1f}%,"
-        + f" end Acc: {(100 * total_end_correct):>4.1f}%,"
-        + f" start sent. Acc: {(100 * total_start_sentence_correct):>4.1f}%,"
-        + f" end sent. Acc: {(100 * total_end_sentence_correct):>4.1f}%,"
-        + f" start loss: {total_start_loss:>7f},"
-        + f" end loss: {total_end_loss:>7f},"
-        + f" [{current:>6d}/{size:>6d}]",
-        end="\r",
-    )
 
     return (
         total_start_sentence_correct + total_end_sentence_correct
@@ -229,13 +214,13 @@ def parse_args() -> Namespace:
         "--cache_dir",
         type=Path,
         help="Directory to the preprocessed caches.",
-        default="./cache/",
+        default="./cache/QA",
     )
     parser.add_argument(
         "--ckpt_dir",
         type=Path,
         help="Directory to save the model file.",
-        default="./ckpt/",
+        default="./ckpt/QA",
     )
     parser.add_argument(
         "--model",
@@ -245,7 +230,7 @@ def parse_args() -> Namespace:
     )
 
     # optimizer
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
 
     # data loader

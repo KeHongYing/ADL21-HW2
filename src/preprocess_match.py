@@ -1,7 +1,5 @@
 import json
 import random
-import re
-from typing import List
 
 import logging
 from argparse import ArgumentParser, Namespace
@@ -16,21 +14,6 @@ logging.basicConfig(
     level=logging.INFO,
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-
-
-def find_token_pos(start_idx: int, paragraph_token: List[str]) -> int:
-    cnt = 0
-
-    for idx, token in enumerate(paragraph_token):
-        cnt += len(re.sub("#", "", token))
-        if start_idx < cnt:
-            return idx
-
-    print(start_idx)
-    print(paragraph_token)
-    print(len(paragraph_token))
-    print(cnt)
-    raise IndexError
 
 
 def train_val_split(data, test_size=0.2, shuffle=True):
@@ -64,17 +47,16 @@ def main(args):
         ]
 
         start_list = []
-        end_list = []
+        len_list = []
         if "answers" in d:
             for ans in d["answers"]:
                 ans_token = tokenizer.tokenize(ans["text"])
                 start_token_pos = len(
                     tokenizer.tokenize(context[d["relevant"]][: ans["start"]])
                 )
-                end_token_pos = start_token_pos + len(ans_token) - 1
 
                 start_list.append(start_token_pos)
-                end_list.append(end_token_pos)
+                len_list.append(len(ans_token))
 
         context_len = max_len - len(question)
         paragraph_index = []
@@ -86,14 +68,12 @@ def main(args):
             for i in range(np.ceil(len(p) / context_len).astype(np.int64)):
                 start, end = -1, -1
                 if idx == d["paragraphs"].index(d["relevant"]):
-                    for s in start_list:
+                    for s, l in zip(start_list, len_list):
                         if i * context_len <= s < (i + 1) * context_len:
                             start = s % context_len
-                    for e in end_list:
-                        if i * context_len <= e < (i + 1) * context_len:
-                            end = e % context_len
+                            end = min(start + l, context_len) - 1
 
-                if start != -1 or end != -1:
+                if start != -1:
                     relevant_index.append(len(paragraph_index))
                 else:
                     irrelevant_index.append(len(paragraph_index))
@@ -108,7 +88,7 @@ def main(args):
                 "question": question,
                 "paragraph": paragraph_context,
                 "start_end": paragraph_start_end,
-                "paragragh_index": paragraph_index,
+                "paragraph_index": paragraph_index,
                 "relevant_index": relevant_index,
                 "irrelevant_index": irrelevant_index,
             }
@@ -151,7 +131,7 @@ def parse_args() -> Namespace:
         "--output_dir",
         type=Path,
         help="Directory to save the processed file.",
-        default="./cache/",
+        default="./cache/match",
     )
     parser.add_argument(
         "--training", help="preprocess training data or not", action="store_true"
