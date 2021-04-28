@@ -18,7 +18,6 @@ SPLITS = [TRAIN, DEV]
 
 
 def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
-    size = 2 * len(dataloader.dataset)
     total_correct = 0
     total_loss = 0
     current = 0

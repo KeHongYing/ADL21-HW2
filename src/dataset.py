@@ -121,6 +121,8 @@ class MatchDataset(Dataset):
         label = []
         context_index = []
         Id = []
+        question = []
+        paragraph = []
 
         for s in samples:
             for idx, paragraph_idx in enumerate(
@@ -137,12 +139,16 @@ class MatchDataset(Dataset):
                 tokens.append(token)
                 label.append(idx >= len(s["irrelevant_index"]))
                 context_index.append(s["paragraph_index"][paragraph_idx])
+                question.append(s["question"])
+                paragraph.append(s["paragraph"][paragraph_idx])
 
         return {
             "id": Id,
             "token": torch.tensor(tokens, dtype=torch.long),
             "label": torch.tensor(label, dtype=torch.float),
             "context_index": context_index,
+            "question": question,
+            "paragraph": paragraph,
         }
 
 

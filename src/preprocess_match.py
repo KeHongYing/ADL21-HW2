@@ -103,7 +103,7 @@ def main(args):
             json.dump(val, f, ensure_ascii=False, indent=4)
     else:
         with open(args.output_dir / args.data, "w") as f:
-            json.dump(output, f)
+            json.dump(output, f, ensure_ascii=False, indent=4)
 
 
 def parse_args() -> Namespace:
