@@ -43,52 +43,22 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
                 end = data["end"].to(device)
                 index = data["index"].to(device)
 
-                pred = model(token)
+                pred = model(token)["start_end"]
 
-                start_loss = loss_fn(pred["start"].transpose(1, 2), start)
-                end_loss = loss_fn(pred["end"].transpose(1, 2), end)
+                start_loss = loss_fn(pred[..., 0], start)
+                end_loss = loss_fn(pred[..., 1], end)
 
-                count = 0
-                softmax = torch.nn.Softmax(dim=-1)
                 for idx, (head, tail) in enumerate(index):
-                    pred_start, pred_end = (
-                        torch.zeros_like(pred["start"][idx][head:tail][:, 1]).to(
-                            device
-                        ),
-                        torch.zeros_like(pred["end"][idx][head:tail][:, 1]).to(device),
-                    )
-                    pred_start[
-                        softmax(pred["start"][idx][head:tail])[:, 1].argmax()
-                    ] = 1
-                    pred_end[softmax(pred["end"][idx][head:tail])[:, 1].argmax()] = 1
-
                     start_correct += (
-                        (pred_start == start[idx][head:tail])
-                        .type(torch.float)
-                        .sum()
-                        .item()
-                    )
+                        pred[idx][..., 0][head:tail].argmax(dim=-1) == start[idx]
+                    ).item()
                     end_correct += (
-                        (pred_end == end[idx][head:tail]).type(torch.float).sum().item()
-                    )
-                    sentence_correct += (
-                        (
-                            torch.all(
-                                pred_start == start[idx][head:tail],
-                                dim=-1,
-                            )
-                            and torch.all(
-                                pred_end == end[idx][head:tail],
-                                dim=-1,
-                            )
-                        )
-                        .type(torch.int)
-                        .item()
-                    )
-                    count += tail - head
-
-                start_correct /= count
-                end_correct /= count
+                        pred[idx][..., 1][head:tail].argmax(dim=-1) == end[idx]
+                    ).item()
+                    sentence_correct = (
+                        (pred[idx][..., 0][head:tail].argmax(dim=-1) == start[idx])
+                        & (pred[idx][..., 1][head:tail].argmax(dim=-1) == end[idx])
+                    ).item()
 
                 total_start_correct += start_correct
                 total_end_correct += end_correct
@@ -96,7 +66,9 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
                 total_start_loss += start_loss
                 total_end_loss += end_loss
 
-                sentence_correct /= pred["start"].shape[0]
+                start_correct /= pred.shape[0]
+                end_correct /= pred.shape[0]
+                sentence_correct /= pred.shape[0]
 
                 if mode == TRAIN:
                     optimizer.zero_grad()
@@ -108,22 +80,22 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
                 tepoch.set_postfix(
                     s_loss=f"{start_loss.item():>.4f}",
                     e_loss=f"{end_loss.item():>.4f}",
-                    s_Acc=f"{start_correct:>.5f}",
-                    e_Acc=f"{end_correct:>.5f}",
-                    sent_Acc=f"{sentence_correct:>.2f}",
+                    s_Acc=f"{start_correct:>.3f}",
+                    e_Acc=f"{end_correct:>.3f}",
+                    sent_Acc=f"{sentence_correct:>.3f}",
                 )
 
-            total_start_correct /= cnt
-            total_end_correct /= cnt
+            total_start_correct /= current
+            total_end_correct /= current
             total_sentence_correct /= current
             total_start_loss /= cnt
             total_end_loss /= cnt
             print(
                 "\033[2K\033[2K"
                 + f"[{mode:>5}] "
-                + f" start Acc: {total_start_correct:>.5f},"
-                + f" end Acc: {total_end_correct:>.5f},"
-                + f" sentence Acc: {total_sentence_correct:>.5f},"
+                + f" start Acc: {total_start_correct:>.3f},"
+                + f" end Acc: {total_end_correct:>.3f},"
+                + f" sentence Acc: {total_sentence_correct:>.3f},"
                 + f" start loss: {total_start_loss:>.4f},"
                 + f" end loss: {total_end_loss:>.4f},",
             )
@@ -160,8 +132,7 @@ def main(args):
         optimizer, min_lr=1e-7, patience=5
     )
 
-    weights = torch.tensor([0.005, 0.995], dtype=torch.float).to(args.device)
-    loss_fn = torch.torch.nn.CrossEntropyLoss(weight=weights)
+    loss_fn = torch.torch.nn.CrossEntropyLoss()
     max_acc, min_loss = 0, 100
     early_stop = 0
     for epoch in range(args.num_epoch):

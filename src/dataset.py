@@ -31,13 +31,12 @@ class QADataset(Dataset):
             token = self.construct(
                 s["question"],
                 s["paragraph"],
-                s["start_end"],
             )
 
+            start.append(s["start_end"][0])
+            end.append(s["start_end"][1])
             index.append(token["index"])
             tokens.append(token["token"])
-            start.append(token["start"])
-            end.append(token["end"])
             relevant.append(s["relevant"])
 
         return {
@@ -48,9 +47,7 @@ class QADataset(Dataset):
             "relevant": relevant,
         }
 
-    def construct(
-        self, question: List[str], paragraph: List[str], start_end: List[int]
-    ) -> Dict:
+    def construct(self, question: List[str], paragraph: List[str]) -> Dict:
         index = [len(question) + 2, len(question) + 2 + len(paragraph)]
 
         token = ["[CLS]"] + question + ["SEP"] + paragraph
@@ -58,18 +55,7 @@ class QADataset(Dataset):
         token += ["[PAD]"] * padding_len
         token = self.tokenizer.convert_tokens_to_ids(token)
 
-        start = (
-            [-100 for _ in range(len(question) + 2)]
-            + [1 if start_end[0] == i else 0 for i in range(len(paragraph))]
-            + [-100 for _ in range(padding_len)]
-        )
-        end = (
-            [-100 for _ in range(len(question) + 2)]
-            + [1 if start_end[1] == i else 0 for i in range(len(paragraph))]
-            + [-100 for _ in range(padding_len)]
-        )
-
-        return {"index": index, "token": token, "start": start, "end": end}
+        return {"index": index, "token": token}
 
 
 class MatchDataset(Dataset):
