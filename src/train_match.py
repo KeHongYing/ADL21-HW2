@@ -66,7 +66,7 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained("hfl/chinese-roberta-wwm-ext")
+    tokenizer = BertTokenizer.from_pretrained(args.backbone)
     data_paths = {split: args.cache_dir / f"{split}.json" for split in SPLITS}
     data = {split: json.loads(path.read_text()) for split, path in data_paths.items()}
     datasets: Dict[str, MatchDataset] = {
@@ -87,7 +87,7 @@ def main(args):
 
     torch.manual_seed(args.seed)
 
-    model = MatchClassifier(model_name="hfl/chinese-roberta-wwm-ext").to(args.device)
+    model = MatchClassifier(model_name=args.backbone).to(args.device)
 
     optimizer = torch.optim.AdamW(
         params=model.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -110,8 +110,13 @@ def main(args):
 
         if acc > max_acc:
             max_acc = acc
-            torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}_best.pt")
-            print(f"model is better than before, save model to {args.model}_best.pt")
+            torch.save(
+                model.state_dict(),
+                args.ckpt_dir / f"{args.model}_{args.backbone}_best.pt",
+            )
+            print(
+                f"model is better than before, save model to {args.model}_{args.backbone}_best.pt"
+            )
 
         if loss > min_loss:
             early_stop += 1
@@ -124,7 +129,7 @@ def main(args):
             break
 
     print(f"Done! Best model Acc: {(100 * max_acc):>4.1f}%")
-    torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}.pt")
+    torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}_{args.backbone}.pt")
 
     with open("result.txt", "a") as f:
         f.write(f"{args.model}, {max_acc:>5f}\n")
@@ -172,6 +177,11 @@ def parse_args() -> Namespace:
 
     # misc
     parser.add_argument("--seed", type=int, default=0xB06902074)
+
+    # model
+    parser.add_argument(
+        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+    )
 
     args = parser.parse_args()
 

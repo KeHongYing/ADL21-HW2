@@ -26,16 +26,17 @@ def main(args):
 
         for idx, (s, e) in enumerate(d["start_end"]):
             if s != -1:
-                paragraph = d["paragraph"][idx]
+                token = question + d["token"][idx]
                 relevant = d["paragraph_index"][idx]
+                paragraph = d["raw_paragraph"][idx]
 
                 output.append(
                     {
                         "id": Id,
-                        "question": question,
-                        "paragraph": paragraph,
+                        "token": token,
                         "relevant": relevant,
                         "start_end": [s, e],
+                        "paragraph": paragraph,
                     }
                 )
 

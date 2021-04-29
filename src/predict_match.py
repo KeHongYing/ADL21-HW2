@@ -44,13 +44,11 @@ def main(args):
                 Id = data["id"][idx]
                 relevant = data["context_index"][idx]
 
-                question = data["question"][idx]
                 paragraph = data["paragraph"][idx]
 
                 result.append(
                     {
                         "id": Id,
-                        "question": question,
                         "paragraph": paragraph,
                         "start_end": [None, None],
                         "relevant": relevant,

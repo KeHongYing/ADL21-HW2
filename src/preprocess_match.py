@@ -34,17 +34,15 @@ def main(args):
     with open(args.data_dir / args.data, "r") as f:
         data = json.load(f)
 
-    tokenizer = BertTokenizer.from_pretrained("hfl/chinese-roberta-wwm-ext")
+    tokenizer = BertTokenizer.from_pretrained(args.backbone)
     max_len = args.max_len - 2
 
     output = []
     for d in tqdm(data, desc="preprocessing data..."):
         Id = d["id"]
-        question = tokenizer.tokenize(d["question"])
+        question = tokenizer.encode(d["question"])
 
-        paragraph = [
-            tokenizer.tokenize(context[context_idx]) for context_idx in d["paragraphs"]
-        ]
+        paragraph = [context[context_idx] for context_idx in d["paragraphs"]]
 
         start_list = []
         len_list = []
@@ -60,18 +58,22 @@ def main(args):
 
         context_len = max_len - len(question)
         paragraph_index = []
-        paragraph_context = []
+        tokens = []
         paragraph_start_end = []
         relevant_index = []
         irrelevant_index = []
+        raw_paragraph = []
         for idx, p in enumerate(paragraph):
-            for i in range(np.ceil(len(p) / context_len).astype(np.int64)):
+            head = 0
+            prev_token_len = 0
+            while head < len(p):
+                token = tokenizer.tokenize(p[head : head + context_len])
                 start, end = -1, -1
                 if idx == d["paragraphs"].index(d["relevant"]):
                     for s, l in zip(start_list, len_list):
-                        if i * context_len <= s < (i + 1) * context_len:
-                            start = s % context_len
-                            end = min(start + l, context_len) - 1
+                        if prev_token_len <= s < prev_token_len + len(token):
+                            start = s - prev_token_len
+                            end = min(start + l, len(token)) - 1
 
                 if start != -1:
                     relevant_index.append(len(paragraph_index))
@@ -79,18 +81,23 @@ def main(args):
                     irrelevant_index.append(len(paragraph_index))
 
                 paragraph_index.append(d["paragraphs"][idx])
-                paragraph_context.append(p[i * context_len : (i + 1) * context_len])
+                tokens.append(tokenizer.convert_tokens_to_ids(token))
                 paragraph_start_end.append([start, end])
+                raw_paragraph.append(p[head : head + context_len])
+
+                prev_token_len += len(token)
+                head += context_len
 
         output.append(
             {
                 "id": Id,
                 "question": question,
-                "paragraph": paragraph_context,
+                "token": tokens,
                 "start_end": paragraph_start_end,
                 "paragraph_index": paragraph_index,
                 "relevant_index": relevant_index,
                 "irrelevant_index": irrelevant_index,
+                "raw_paragraph": raw_paragraph,
             }
         )
 
@@ -137,6 +144,10 @@ def parse_args() -> Namespace:
         "--training", help="preprocess training data or not", action="store_true"
     )
     parser.add_argument("--max_len", type=int, help="token max length.", default=512)
+    # model
+    parser.add_argument(
+        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+    )
     args = parser.parse_args()
     return args
 

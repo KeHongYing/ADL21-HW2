@@ -15,10 +15,8 @@ class QAClassifier(torch.nn.Module):
     def forward(self, batch) -> Dict[str, torch.Tensor]:
         x = self.backbone(input_ids=batch)["last_hidden_state"]
 
-        start = self.fc(x)
-        end = self.fc(x)
-
-        return {"start": start, "end": end}
+        x = self.fc(x)
+        return {"start_end": x}
 
 
 class MatchClassifier(torch.nn.Module):

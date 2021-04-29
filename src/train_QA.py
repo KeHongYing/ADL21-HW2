@@ -36,47 +36,20 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
                 end = data["end"].to(device)
                 index = data["index"].to(device)
 
-                pred = model(token)
+                pred = model(token)["start_end"]
 
-                start_loss = loss_fn(pred["start"].transpose(1, 2), start)
-                end_loss = loss_fn(pred["end"].transpose(1, 2), end)
-
-                softmax = torch.nn.Softmax(dim=-1)
-                pred_start_idx = torch.tensor(
-                    [
-                        softmax(pred["start"][idx][head:tail])[..., 1].argmax().item()
-                        for idx, (head, tail) in enumerate(index)
-                    ]
-                ).to(device)
-                pred_end_idx = torch.tensor(
-                    [
-                        softmax(pred["end"][idx][head:tail])[..., 1].argmax().item()
-                        for idx, (head, tail) in enumerate(index)
-                    ]
-                ).to(device)
-                true_start_idx = torch.tensor(
-                    [
-                        start[idx][head:tail].argmax().item()
-                        for idx, (head, tail) in enumerate(index)
-                    ]
-                ).to(device)
-                true_end_idx = torch.tensor(
-                    [
-                        end[idx][head:tail].argmax().item()
-                        for idx, (head, tail) in enumerate(index)
-                    ]
-                ).to(device)
+                start_loss = loss_fn(pred[..., 0], start)
+                end_loss = loss_fn(pred[..., 1], end)
 
                 sentence_correct = (
                     (
-                        (pred_start_idx == true_start_idx)
-                        & (pred_end_idx == true_end_idx)
+                        (pred[..., 0].argmax(dim=-1) == start)
+                        & (pred[..., 1].argmax(dim=-1) == end)
                     )
                     .type(torch.float)
                     .mean()
                     .item()
                 )
-
                 total_sentence_correct += sentence_correct
                 total_start_loss += start_loss
                 total_end_loss += end_loss
@@ -107,7 +80,7 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained("hfl/chinese-roberta-wwm-ext")
+    tokenizer = BertTokenizer.from_pretrained(args.backbone)
     data_paths = {split: args.cache_dir / f"{split}.json" for split in SPLITS}
     data = {split: json.loads(path.read_text()) for split, path in data_paths.items()}
     datasets: Dict[str, QADataset] = {
@@ -126,7 +99,7 @@ def main(args):
 
     torch.manual_seed(args.seed)
 
-    model = QAClassifier(model_name="hfl/chinese-roberta-wwm-ext").to(args.device)
+    model = QAClassifier(model_name=args.backbone).to(args.device)
 
     optimizer = torch.optim.AdamW(
         params=model.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -135,8 +108,7 @@ def main(args):
         optimizer, min_lr=1e-7, patience=5
     )
 
-    weights = torch.tensor([0.005, 0.995], dtype=torch.float).to(args.device)
-    loss_fn = torch.torch.nn.CrossEntropyLoss(weight=weights)
+    loss_fn = torch.nn.CrossEntropyLoss()
     max_acc, min_loss = 0, 100
     early_stop = 0
     for epoch in range(args.num_epoch):
@@ -150,8 +122,13 @@ def main(args):
 
         if acc > max_acc:
             max_acc = acc
-            torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}_best.pt")
-            print(f"model is better than before, save model to {args.model}_best.pt")
+            torch.save(
+                model.state_dict(),
+                args.ckpt_dir / f"{args.model}_{args.backbone}_best.pt",
+            )
+            print(
+                f"model is better than before, save model to {args.model}_{args.backbone}_best.pt"
+            )
 
         if loss > min_loss:
             early_stop += 1
@@ -213,6 +190,10 @@ def parse_args() -> Namespace:
     # misc
     parser.add_argument("--seed", type=int, default=0xB06902074)
 
+    # model
+    parser.add_argument(
+        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+    )
     args = parser.parse_args()
 
     return args

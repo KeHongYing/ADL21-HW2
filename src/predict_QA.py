@@ -17,19 +17,36 @@ DEV = "val"
 SPLITS = [TRAIN, DEV]
 
 
-def reconstruct(ans: List[str]) -> str:
-    return "".join(ans)
+def reconstruct(paragraph: str, token: List[int], tokenizer: BertTokenizer) -> str:
+    start, end = 0, len(paragraph)
+    target = " ".join(map(str, token))
+
+    while start < end:
+        t = tokenizer.encode(paragraph[start:end])[1:-1]
+        t_str = " ".join(map(str, t))
+
+        is_start_with_target = t_str.startswith(target)
+        is_end_with_targert = t_str.endswith(target)
+        if not is_start_with_target:
+            start += 1
+        if not is_end_with_targert:
+            end -= 1
+
+        if is_start_with_target and is_end_with_targert:
+            break
+
+    return paragraph[start:end]
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained("hfl/chinese-roberta-wwm-ext")
+    tokenizer = BertTokenizer.from_pretrained(args.backbone)
     data = json.loads(args.test_file.read_text())
     dataset = QADataset(data, tokenizer)
     dataloader = DataLoader(
         dataset, batch_size=args.batch_size, collate_fn=dataset.collact_fn
     )
 
-    model = QAClassifier("hfl/chinese-roberta-wwm-ext").to(args.device)
+    model = QAClassifier(args.backbone).to(args.device)
     model.eval()
 
     ckpt = torch.load(args.ckpt_path)
@@ -43,18 +60,21 @@ def main(args):
 
             for data in tepoch:
                 token = data["token"].to(args.device)
-                pred = model(token)
+                pred = model(token)["start_end"]
 
                 for idx, p in pred:
                     head, tail = data["index"][idx]
 
-                    start = p["start"][head:tail][1].argmax()
-                    end = p["end"][head:tail][1].argmax()
-                    paragraph = data["token"][idx][head:tail]
+                    start = p[..., 0][head:tail].argmax()
+                    end = p[..., 1][head:tail].argmax()
+                    paragraph = data["paragraph"]
 
                     Id = data["id"][idx]
-                    answer = paragraph[start : end + 1]
-                    result[Id] = reconstruct(answer)
+                    result[Id] = reconstruct(
+                        paragraph[start : -(len(token) - end - 1)],
+                        token[idx][head:tail][start : end + 1],
+                        tokenizer,
+                    )
 
     with open(args.pred_file, "w") as f:
         json.dump(result, f, indent=4, ensure_ascii=False)
@@ -81,6 +101,10 @@ def parse_args() -> Namespace:
 
     parser.add_argument(
         "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cpu"
+    )
+    # model
+    parser.add_argument(
+        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
     )
     args = parser.parse_args()
     return args

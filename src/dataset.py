@@ -26,11 +26,11 @@ class QADataset(Dataset):
         end = []
         index = []
         relevant = []
+        paragraph = []
 
         for s in samples:
             token = self.construct(
-                s["question"],
-                s["paragraph"],
+                s["token"],
                 s["start_end"],
             )
 
@@ -39,6 +39,7 @@ class QADataset(Dataset):
             start.append(token["start"])
             end.append(token["end"])
             relevant.append(s["relevant"])
+            paragraph.append(s["paragraph"])
 
         return {
             "token": torch.tensor(tokens, dtype=torch.long),
@@ -46,30 +47,18 @@ class QADataset(Dataset):
             "end": torch.tensor(end, dtype=torch.long),
             "index": torch.tensor(index, dtype=torch.long),
             "relevant": relevant,
+            "paragraph": paragraph,
         }
 
-    def construct(
-        self, question: List[str], paragraph: List[str], start_end: List[int]
-    ) -> Dict:
-        index = [len(question) + 2, len(question) + 2 + len(paragraph)]
+    def construct(self, token: List[int], start_end: List[int]) -> Dict:
+        question_len = token.index(self.tokenizer.sep_token_id) + 1
+        index = [question_len, len(token)]
 
-        token = ["[CLS]"] + question + ["[SEP]"] + paragraph
         padding_len = self.max_len - len(token)
-        token += ["[PAD]" for _ in range(padding_len)]
-        token = self.tokenizer.convert_tokens_to_ids(token)
+        token += [self.tokenizer.pad_token_id for _ in range(padding_len)]
 
-        start = (
-            [-100 for _ in range(len(question) + 2)]
-            + [1 if (start_end[0] == i) else 0 for i in range(len(paragraph))]
-            + [-100 for _ in range(padding_len)]
-        )
-        end = (
-            [-100 for _ in range(len(question) + 2)]
-            + [1 if (start_end[1] == i) else 0 for i in range(len(paragraph))]
-            + [-100 for _ in range(padding_len)]
-        )
-        assert start_end[0] == torch.tensor(start[index[0] : index[1]]).argmax().item()
-        assert start_end[1] == torch.tensor(end[index[0] : index[1]]).argmax().item()
+        start = start_end[0] + question_len
+        end = start_end[1] + question_len
 
         return {"index": index, "token": token, "start": start, "end": end}
 
@@ -98,15 +87,9 @@ class MatchDataset(Dataset):
                     random.choice(s["relevant_index"]),
                 ]
             ):
-                token = (
-                    ["[CLS]"]
-                    + s["question"]
-                    + ["[SEP]"]
-                    + s["paragraph"][paragraph_idx]
-                )
+                token = s["question"] + s["token"][paragraph_idx]
                 padding_len = self.max_len - len(token)
-                token += ["[PAD]"] * padding_len
-                token = self.tokenizer.convert_tokens_to_ids(token)
+                token += [self.tokenizer.pad_token_id] * padding_len
 
                 tokens.append(token)
                 label.append(idx & 1)
@@ -126,36 +109,27 @@ class MatchDataset(Dataset):
         label = []
         context_index = []
         Id = []
-        question = []
         paragraph = []
 
         for s in samples:
             for idx, paragraph_idx in enumerate(
                 s["irrelevant_index"] + s["relevant_index"]
             ):
-                token = (
-                    ["[CLS]"]
-                    + s["question"]
-                    + ["[SEP]"]
-                    + s["paragraph"][paragraph_idx]
-                )
+                token = s["question"] + s["token"][paragraph_idx]
                 padding_len = self.max_len - len(token)
-                token += ["[PAD]"] * padding_len
-                token = self.tokenizer.convert_tokens_to_ids(token)
+                token += [self.tokenizer.pad_token_id] * padding_len
 
                 Id.append(s["id"])
                 tokens.append(token)
                 label.append(idx >= len(s["irrelevant_index"]))
                 context_index.append(s["paragraph_index"][paragraph_idx])
-                question.append(s["question"])
-                paragraph.append(s["paragraph"][paragraph_idx])
+                paragraph.append(s["raw_paragraph"][paragraph_idx])
 
         return {
             "id": Id,
             "token": torch.tensor(tokens, dtype=torch.long),
             "label": torch.tensor(label, dtype=torch.float),
             "context_index": context_index,
-            "question": question,
             "paragraph": paragraph,
         }
 
