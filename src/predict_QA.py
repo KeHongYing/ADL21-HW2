@@ -1,4 +1,5 @@
 import json
+import re
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 from transformers import BertTokenizer
 from tqdm import tqdm
+from typing import List
 
 from dataset import QADataset
 from model import QAClassifier
@@ -13,6 +15,10 @@ from model import QAClassifier
 TRAIN = "train"
 DEV = "val"
 SPLITS = [TRAIN, DEV]
+
+
+def reconstruct(ans: List[str]) -> str:
+    return "".join(ans)
 
 
 def main(args):
@@ -48,7 +54,7 @@ def main(args):
 
                     Id = data["id"][idx]
                     answer = paragraph[start : end + 1]
-                    result[Id] = answer
+                    result[Id] = reconstruct(answer)
 
     with open(args.pred_file, "w") as f:
         json.dump(result, f, indent=4, ensure_ascii=False)

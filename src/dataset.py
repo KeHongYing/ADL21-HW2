@@ -53,21 +53,23 @@ class QADataset(Dataset):
     ) -> Dict:
         index = [len(question) + 2, len(question) + 2 + len(paragraph)]
 
-        token = ["[CLS]"] + question + ["SEP"] + paragraph
+        token = ["[CLS]"] + question + ["[SEP]"] + paragraph
         padding_len = self.max_len - len(token)
-        token += ["[PAD]"] * padding_len
+        token += ["[PAD]" for _ in range(padding_len)]
         token = self.tokenizer.convert_tokens_to_ids(token)
 
         start = (
             [-100 for _ in range(len(question) + 2)]
-            + [1 if start_end[0] == i else 0 for i in range(len(paragraph))]
+            + [1 if (start_end[0] == i) else 0 for i in range(len(paragraph))]
             + [-100 for _ in range(padding_len)]
         )
         end = (
             [-100 for _ in range(len(question) + 2)]
-            + [1 if start_end[1] == i else 0 for i in range(len(paragraph))]
+            + [1 if (start_end[1] == i) else 0 for i in range(len(paragraph))]
             + [-100 for _ in range(padding_len)]
         )
+        assert start_end[0] == torch.tensor(start[index[0] : index[1]]).argmax().item()
+        assert start_end[1] == torch.tensor(end[index[0] : index[1]]).argmax().item()
 
         return {"index": index, "token": token, "start": start, "end": end}
 
@@ -97,7 +99,10 @@ class MatchDataset(Dataset):
                 ]
             ):
                 token = (
-                    ["[CLS]"] + s["question"] + ["SEP"] + s["paragraph"][paragraph_idx]
+                    ["[CLS]"]
+                    + s["question"]
+                    + ["[SEP]"]
+                    + s["paragraph"][paragraph_idx]
                 )
                 padding_len = self.max_len - len(token)
                 token += ["[PAD]"] * padding_len
@@ -129,7 +134,10 @@ class MatchDataset(Dataset):
                 s["irrelevant_index"] + s["relevant_index"]
             ):
                 token = (
-                    ["[CLS]"] + s["question"] + ["SEP"] + s["paragraph"][paragraph_idx]
+                    ["[CLS]"]
+                    + s["question"]
+                    + ["[SEP]"]
+                    + s["paragraph"][paragraph_idx]
                 )
                 padding_len = self.max_len - len(token)
                 token += ["[PAD]"] * padding_len

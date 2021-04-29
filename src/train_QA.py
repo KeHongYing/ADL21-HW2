@@ -18,11 +18,8 @@ SPLITS = [TRAIN, DEV]
 
 
 def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
-    total_start_correct, total_end_correct = 0, 0
     total_sentence_correct = 0
     total_start_loss, total_end_loss = 0, 0
-    current = 0
-    cnt = 0
 
     if mode == TRAIN:
         model.train()
@@ -34,10 +31,6 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
             for data in tepoch:
                 tepoch.set_description(f"[{mode:>5}]")
 
-                start_correct, end_correct = 0, 0
-                sentence_correct = 0
-                cnt += 1
-
                 token = data["token"].to(device)
                 start = data["start"].to(device)
                 end = data["end"].to(device)
@@ -48,87 +41,69 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
                 start_loss = loss_fn(pred["start"].transpose(1, 2), start)
                 end_loss = loss_fn(pred["end"].transpose(1, 2), end)
 
-                count = 0
                 softmax = torch.nn.Softmax(dim=-1)
-                for idx, (head, tail) in enumerate(index):
-                    pred_start, pred_end = (
-                        torch.zeros_like(pred["start"][idx][head:tail][:, 1]).to(
-                            device
-                        ),
-                        torch.zeros_like(pred["end"][idx][head:tail][:, 1]).to(device),
-                    )
-                    pred_start[
-                        softmax(pred["start"][idx][head:tail])[:, 1].argmax()
-                    ] = 1
-                    pred_end[softmax(pred["end"][idx][head:tail])[:, 1].argmax()] = 1
+                pred_start_idx = torch.tensor(
+                    [
+                        softmax(pred["start"][idx][head:tail])[..., 1].argmax().item()
+                        for idx, (head, tail) in enumerate(index)
+                    ]
+                ).to(device)
+                pred_end_idx = torch.tensor(
+                    [
+                        softmax(pred["end"][idx][head:tail])[..., 1].argmax().item()
+                        for idx, (head, tail) in enumerate(index)
+                    ]
+                ).to(device)
+                true_start_idx = torch.tensor(
+                    [
+                        start[idx][head:tail].argmax().item()
+                        for idx, (head, tail) in enumerate(index)
+                    ]
+                ).to(device)
+                true_end_idx = torch.tensor(
+                    [
+                        end[idx][head:tail].argmax().item()
+                        for idx, (head, tail) in enumerate(index)
+                    ]
+                ).to(device)
 
-                    start_correct += (
-                        (pred_start == start[idx][head:tail])
-                        .type(torch.float)
-                        .sum()
-                        .item()
+                sentence_correct = (
+                    (
+                        (pred_start_idx == true_start_idx)
+                        & (pred_end_idx == true_end_idx)
                     )
-                    end_correct += (
-                        (pred_end == end[idx][head:tail]).type(torch.float).sum().item()
-                    )
-                    sentence_correct += (
-                        (
-                            torch.all(
-                                pred_start == start[idx][head:tail],
-                                dim=-1,
-                            )
-                            and torch.all(
-                                pred_end == end[idx][head:tail],
-                                dim=-1,
-                            )
-                        )
-                        .type(torch.int)
-                        .item()
-                    )
-                    count += tail - head
+                    .type(torch.float)
+                    .mean()
+                    .item()
+                )
 
-                start_correct /= count
-                end_correct /= count
-
-                total_start_correct += start_correct
-                total_end_correct += end_correct
                 total_sentence_correct += sentence_correct
                 total_start_loss += start_loss
                 total_end_loss += end_loss
-
-                sentence_correct /= pred["start"].shape[0]
 
                 if mode == TRAIN:
                     optimizer.zero_grad()
                     (start_loss + end_loss).backward()
                     optimizer.step()
 
-                current += token.shape[0]
-
                 tepoch.set_postfix(
                     s_loss=f"{start_loss.item():>.4f}",
                     e_loss=f"{end_loss.item():>.4f}",
-                    s_Acc=f"{start_correct:>.5f}",
-                    e_Acc=f"{end_correct:>.5f}",
-                    sent_Acc=f"{sentence_correct:>.2f}",
+                    Acc=f"{sentence_correct:>.2f}",
                 )
 
-            total_start_correct /= cnt
-            total_end_correct /= cnt
-            total_sentence_correct /= current
-            total_start_loss /= cnt
-            total_end_loss /= cnt
+            total_sentence_correct /= len(tepoch)
+            total_start_loss /= len(tepoch)
+            total_end_loss /= len(tepoch)
             print(
                 "\033[2K\033[2K"
                 + f"[{mode:>5}] "
-                + f" start Acc: {total_start_correct:>.5f},"
-                + f" end Acc: {total_end_correct:>.5f},"
-                + f" sentence Acc: {total_sentence_correct:>.5f},"
+                + f" Acc: {total_sentence_correct:>.5f},"
                 + f" start loss: {total_start_loss:>.4f},"
                 + f" end loss: {total_end_loss:>.4f},",
             )
 
-    return sentence_correct, total_start_loss + total_end_loss
+    return total_sentence_correct, total_start_loss + total_end_loss
 
 
 def main(args):
@@ -166,10 +141,10 @@ def main(args):
     early_stop = 0
     for epoch in range(args.num_epoch):
         print(f"Epoch: {epoch + 1}")
-        iter_loop(dataloader[TRAIN], model, loss_fn, optimizer, args.device, TRAIN)
-        acc, loss = iter_loop(
-            dataloader[DEV], model, loss_fn, optimizer, args.device, DEV
-        )
+        for split in SPLITS:
+            acc, loss = iter_loop(
+                dataloader[split], model, loss_fn, optimizer, args.device, split
+            )
 
         scheduler.step(loss)
 

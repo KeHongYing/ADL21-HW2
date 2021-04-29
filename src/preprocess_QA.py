@@ -6,8 +6,6 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 from tqdm.auto import tqdm
-from transformers import BertTokenizer
-import numpy as np
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
