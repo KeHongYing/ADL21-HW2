@@ -94,7 +94,7 @@ def main(args):
             prev_token_len = 0
             while head < len(p):
                 tail = mark_list[min(head + context_len, len(p)) - 1] + 1
-                tail = tail if tail != 0 else head + context_len
+                tail = tail if tail != head else head + context_len
                 token = tokenizer.tokenize(p[head:tail])
                 start, end = -1, -1
                 if idx == d["paragraphs"].index(d["relevant"]):
