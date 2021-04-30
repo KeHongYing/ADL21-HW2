@@ -16,14 +16,14 @@ SPLITS = [TRAIN, DEV]
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained("hfl/chinese-roberta-wwm-ext")
+    tokenizer = BertTokenizer.from_pretrained(args.backbone)
     data = json.loads(args.test_file.read_text())
     dataset = MatchDataset(data, tokenizer)
     dataloader = DataLoader(
         dataset, batch_size=args.batch_size, collate_fn=dataset.predict_collate_fn
     )
 
-    model = MatchClassifier("hfl/chinese-roberta-wwm-ext").to(args.device)
+    model = MatchClassifier(args.backbone).to(args.device)
     model.eval()
 
     ckpt = torch.load(args.ckpt_path)
@@ -45,12 +45,16 @@ def main(args):
                 relevant = data["context_index"][idx]
 
                 paragraph = data["paragraph"][idx]
+                token = token[idx].tolist()
+                end_idx = token.index(tokenizer.pad_token_id)
+                token = token[: end_idx if end_idx != -1 else len(token)]
 
                 result.append(
                     {
                         "id": Id,
                         "paragraph": paragraph,
-                        "start_end": [None, None],
+                        "start_end": [-1000, -1000],
+                        "token": token,
                         "relevant": relevant,
                     }
                 )
@@ -81,6 +85,10 @@ def parse_args() -> Namespace:
     parser.add_argument(
         "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cpu"
     )
+    parser.add_argument(
+        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+    )
+
     args = parser.parse_args()
     return args
 

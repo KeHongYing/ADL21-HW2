@@ -27,6 +27,7 @@ class QADataset(Dataset):
         index = []
         relevant = []
         paragraph = []
+        Id = []
 
         for s in samples:
             token = self.construct(
@@ -40,8 +41,10 @@ class QADataset(Dataset):
             end.append(token["end"])
             relevant.append(s["relevant"])
             paragraph.append(s["paragraph"])
+            Id.append(s["id"])
 
         return {
+            "id": Id,
             "token": torch.tensor(tokens, dtype=torch.long),
             "start": torch.tensor(start, dtype=torch.long),
             "end": torch.tensor(end, dtype=torch.long),

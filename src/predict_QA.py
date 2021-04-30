@@ -1,5 +1,4 @@
 import json
-import re
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
@@ -19,7 +18,7 @@ SPLITS = [TRAIN, DEV]
 
 def reconstruct(paragraph: str, token: List[int], tokenizer: BertTokenizer) -> str:
     start, end = 0, len(paragraph)
-    target = " ".join(map(str, token))
+    target = " ".join([str(t.item()) for t in token])
 
     while start < end:
         t = tokenizer.encode(paragraph[start:end])[1:-1]
@@ -33,9 +32,11 @@ def reconstruct(paragraph: str, token: List[int], tokenizer: BertTokenizer) -> s
             end -= 1
 
         if is_start_with_target and is_end_with_targert:
-            break
+            if t_str == target:
+                break
+            end -= 1
 
-    return paragraph[start:end]
+    return paragraph[start:end].strip()
 
 
 def main(args):
@@ -43,7 +44,7 @@ def main(args):
     data = json.loads(args.test_file.read_text())
     dataset = QADataset(data, tokenizer)
     dataloader = DataLoader(
-        dataset, batch_size=args.batch_size, collate_fn=dataset.collact_fn
+        dataset, batch_size=args.batch_size, collate_fn=dataset.collate_fn
     )
 
     model = QAClassifier(args.backbone).to(args.device)
@@ -59,20 +60,25 @@ def main(args):
             tepoch.set_description("[predict]")
 
             for data in tepoch:
-                token = data["token"].to(args.device)
-                pred = model(token)["start_end"]
+                tokens = data["token"].to(args.device)
+                pred = model(tokens)["start_end"]
 
-                for idx, p in pred:
+                for idx, p in enumerate(pred):
                     head, tail = data["index"][idx]
 
                     start = p[..., 0][head:tail].argmax()
                     end = p[..., 1][head:tail].argmax()
-                    paragraph = data["paragraph"]
+                    paragraph = data["paragraph"][idx]
 
                     Id = data["id"][idx]
+                    token = tokens[idx][head:tail]
                     result[Id] = reconstruct(
-                        paragraph[start : -(len(token) - end - 1)],
-                        token[idx][head:tail][start : end + 1],
+                        paragraph[
+                            start : -(len(token) - end - 2)
+                            if (len(token) - end - 2) > 0
+                            else len(paragraph)
+                        ],
+                        token[start : end + 1],
                         tokenizer,
                     )
 
@@ -94,7 +100,7 @@ def parse_args() -> Namespace:
     parser.add_argument(
         "--ckpt_path", type=Path, help="Path to model checkpoint.", required=True
     )
-    parser.add_argument("--pred_file", type=Path, default="match.json")
+    parser.add_argument("--pred_file", type=Path, default="output.json")
 
     # data loader
     parser.add_argument("--batch_size", type=int, default=8)

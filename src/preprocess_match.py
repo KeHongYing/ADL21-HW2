@@ -7,7 +7,6 @@ from pathlib import Path
 
 from tqdm.auto import tqdm
 from transformers import BertTokenizer
-import numpy as np
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -26,6 +25,28 @@ def train_val_split(data, test_size=0.2, shuffle=True):
     return train, val
 
 
+def find_end_index(paragraph: str, head: int, context_len: int) -> int:
+    tail = min(head + context_len, len(paragraph))
+
+    while head < tail and paragraph[tail - 1] != mark:
+        tail -= 1
+
+    return tail if head < tail else len(paragraph)
+
+
+def construct_mark_table(paragraph):
+    pos = -1
+    ret = []
+    mark = set(["。", "！", "？", "；"])
+
+    for idx, p in enumerate(paragraph):
+        if p in mark:
+            pos = idx
+
+        ret.append(pos)
+    return ret
+
+
 def main(args):
     random.seed(args.rand_seed)
     with open(args.data_dir / args.context, "r") as f:
@@ -38,11 +59,15 @@ def main(args):
     max_len = args.max_len - 2
 
     output = []
+    mark = set(["。", "！", "？", "；"])
     for d in tqdm(data, desc="preprocessing data..."):
         Id = d["id"]
         question = tokenizer.encode(d["question"])
 
-        paragraph = [context[context_idx] for context_idx in d["paragraphs"]]
+        paragraph = [
+            context[context_idx] + ("。" if context[context_idx][-1] not in mark else "")
+            for context_idx in d["paragraphs"]
+        ]
 
         start_list = []
         len_list = []
@@ -64,10 +89,13 @@ def main(args):
         irrelevant_index = []
         raw_paragraph = []
         for idx, p in enumerate(paragraph):
+            mark_list = construct_mark_table(p)
             head = 0
             prev_token_len = 0
             while head < len(p):
-                token = tokenizer.tokenize(p[head : head + context_len])
+                tail = mark_list[min(head + context_len, len(p)) - 1] + 1
+                tail = tail if tail != 0 else head + context_len
+                token = tokenizer.tokenize(p[head:tail])
                 start, end = -1, -1
                 if idx == d["paragraphs"].index(d["relevant"]):
                     for s, l in zip(start_list, len_list):
@@ -83,10 +111,10 @@ def main(args):
                 paragraph_index.append(d["paragraphs"][idx])
                 tokens.append(tokenizer.convert_tokens_to_ids(token))
                 paragraph_start_end.append([start, end])
-                raw_paragraph.append(p[head : head + context_len])
+                raw_paragraph.append(p[head : tail])
 
                 prev_token_len += len(token)
-                head += context_len
+                head = tail
 
         output.append(
             {
