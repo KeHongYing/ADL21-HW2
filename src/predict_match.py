@@ -86,7 +86,10 @@ def parse_args() -> Namespace:
         "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cpu"
     )
     parser.add_argument(
-        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+        "--backbone",
+        help="bert backbone",
+        type=str,
+        default="voidful/albert_chinese_large",
     )
 
     args = parser.parse_args()

@@ -51,7 +51,7 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
                     optimizer.step()
 
                 current += token.shape[0]
-                tepoch.set_postfix(loss=f"{loss.item():>.7f}", Acc=f"{correct:>.2f}")
+                tepoch.set_postfix(loss=f"{loss.item():>.4f}", Acc=f"{correct:>.4f}")
 
             total_correct /= current
             total_loss /= cnt
@@ -99,6 +99,9 @@ def main(args):
     loss_fn = torch.torch.nn.BCELoss()
     max_acc, min_loss = 0, 100
     early_stop = 0
+    backbone = (
+        args.backbone if "/" not in args.backbone else args.backbone.split("/")[1]
+    )
     for epoch in range(args.num_epoch):
         print(f"Epoch: {epoch + 1}")
         iter_loop(dataloader[TRAIN], model, loss_fn, optimizer, args.device, TRAIN)
@@ -112,10 +115,10 @@ def main(args):
             max_acc = acc
             torch.save(
                 model.state_dict(),
-                args.ckpt_dir / f"{args.model}_{args.backbone}_best.pt",
+                args.ckpt_dir / f"{args.model}_{backbone}_best.pt",
             )
             print(
-                f"model is better than before, save model to {args.model}_{args.backbone}_best.pt"
+                f"model is better than before, save model to {args.model}_{backbone}_best.pt"
             )
 
         if loss > min_loss:
@@ -128,11 +131,11 @@ def main(args):
             print("Early stop...")
             break
 
-    print(f"Done! Best model Acc: {(100 * max_acc):>4.1f}%")
-    torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}_{args.backbone}.pt")
+    print(f"Done! Best model Acc: {(100 * max_acc):>.4f}%")
+    torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}_{backbone}.pt")
 
-    with open("result.txt", "a") as f:
-        f.write(f"{args.model}, {max_acc:>5f}\n")
+    with open("result_match.txt", "a") as f:
+        f.write(f"{args.model}_{backbone}, {max_acc:>5f}\n")
 
 
 def parse_args() -> Namespace:
@@ -164,7 +167,7 @@ def parse_args() -> Namespace:
 
     # optimizer
     parser.add_argument("--lr", type=float, default=1e-5)
-    parser.add_argument("--weight_decay", type=float, default=5e-4)
+    parser.add_argument("--weight_decay", type=float, default=5e-3)
 
     # data loader
     parser.add_argument("--batch_size", type=int, default=128)
@@ -180,7 +183,10 @@ def parse_args() -> Namespace:
 
     # model
     parser.add_argument(
-        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+        "--backbone",
+        help="bert backbone",
+        type=str,
+        default="voidful/albert_chinese_large",
     )
 
     args = parser.parse_args()

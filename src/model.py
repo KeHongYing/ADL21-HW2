@@ -2,14 +2,14 @@ from typing import Dict
 
 import torch
 
-from transformers import BertModel
+from transformers import AutoModel
 
 
 class QAClassifier(torch.nn.Module):
     def __init__(self, model_name: str) -> None:
         super(QAClassifier, self).__init__()
-        self.backbone = BertModel.from_pretrained(model_name)
-        self.fc = torch.nn.Linear(768, 2)
+        self.backbone = AutoModel.from_pretrained(model_name)
+        self.fc = torch.nn.Linear(1024, 2)
         self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, batch) -> Dict[str, torch.Tensor]:
@@ -22,8 +22,8 @@ class QAClassifier(torch.nn.Module):
 class MatchClassifier(torch.nn.Module):
     def __init__(self, model_name: str) -> None:
         super(MatchClassifier, self).__init__()
-        self.backbone = BertModel.from_pretrained(model_name)
-        self.fc = torch.nn.Linear(768, 1)
+        self.backbone = AutoModel.from_pretrained(model_name)
+        self.fc = torch.nn.Linear(1024, 1)
         self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, batch) -> Dict[str, torch.Tensor]:

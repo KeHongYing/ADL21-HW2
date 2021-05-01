@@ -18,7 +18,7 @@ SPLITS = [TRAIN, DEV]
 
 def reconstruct(paragraph: str, token: List[int], tokenizer: BertTokenizer) -> str:
     start, end = 0, len(paragraph)
-    target = " ".join([str(t.item()) for t in token])
+    target = " ".join(map(str, token))
 
     while start < end:
         t = tokenizer.encode(paragraph[start:end])[1:-1]
@@ -67,7 +67,7 @@ def main(args):
                     head, tail = data["index"][idx]
 
                     start = p[..., 0][head:tail].argmax()
-                    end = p[..., 1][head:tail].argmax()
+                    end = p[..., 1][start + head : tail].argmax() + start
                     paragraph = data["paragraph"][idx]
 
                     Id = data["id"][idx]
@@ -78,7 +78,7 @@ def main(args):
                             if (len(token) - end - 2) > 0
                             else len(paragraph)
                         ],
-                        token[start : end + 1],
+                        token[start : end + 1].tolist(),
                         tokenizer,
                     )
 
@@ -110,7 +110,10 @@ def parse_args() -> Namespace:
     )
     # model
     parser.add_argument(
-        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+        "--backbone",
+        help="bert backbone",
+        type=str,
+        default="voidful/albert_chinese_large",
     )
     args = parser.parse_args()
     return args

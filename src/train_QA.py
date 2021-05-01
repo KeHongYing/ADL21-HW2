@@ -34,7 +34,6 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
                 token = data["token"].to(device)
                 start = data["start"].to(device)
                 end = data["end"].to(device)
-                index = data["index"].to(device)
 
                 pred = model(token)["start_end"]
 
@@ -62,7 +61,7 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
                 tepoch.set_postfix(
                     s_loss=f"{start_loss.item():>.4f}",
                     e_loss=f"{end_loss.item():>.4f}",
-                    Acc=f"{sentence_correct:>.2f}",
+                    Acc=f"{sentence_correct:>.4f}",
                 )
 
             total_sentence_correct /= len(tepoch)
@@ -111,6 +110,9 @@ def main(args):
     loss_fn = torch.nn.CrossEntropyLoss()
     max_acc, min_loss = 0, 100
     early_stop = 0
+    backbone = (
+        args.backbone if "/" not in args.backbone else args.backbone.split("/")[1]
+    )
     for epoch in range(args.num_epoch):
         print(f"Epoch: {epoch + 1}")
         for split in SPLITS:
@@ -124,10 +126,10 @@ def main(args):
             max_acc = acc
             torch.save(
                 model.state_dict(),
-                args.ckpt_dir / f"{args.model}_{args.backbone}_best.pt",
+                args.ckpt_dir / f"{args.model}_{backbone}_best.pt",
             )
             print(
-                f"model is better than before, save model to {args.model}_{args.backbone}_best.pt"
+                f"model is better than before, save model to {args.model}_{backbone}_best.pt"
             )
 
         if loss > min_loss:
@@ -140,11 +142,11 @@ def main(args):
             print("Early stop...")
             break
 
-    print(f"Done! Best model Acc: {(100 * max_acc):>4.1f}%")
-    torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}.pt")
+    print(f"Done! Best model Acc: {(100 * max_acc):>.4f}%")
+    torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}_{backbone}.pt")
 
-    with open("result.txt", "a") as f:
-        f.write(f"{args.model}, {max_acc:>5f}\n")
+    with open("result_QA.txt", "a") as f:
+        f.write(f"{args.model}_{backbone}, {max_acc:>5f}\n")
 
 
 def parse_args() -> Namespace:
@@ -192,7 +194,10 @@ def parse_args() -> Namespace:
 
     # model
     parser.add_argument(
-        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+        "--backbone",
+        help="bert backbone",
+        type=str,
+        default="voidful/albert_chinese_large",
     )
     args = parser.parse_args()
 

@@ -2,7 +2,6 @@ import json
 import logging
 from argparse import ArgumentParser, Namespace
 
-import torch
 from transformers import BertTokenizer
 from tqdm.auto import tqdm
 
@@ -38,12 +37,10 @@ def main(args):
                 if (len(token) - end - 2) > 0
                 else len(d["paragraph"])
             ],
-            torch.tensor(token[start : end + 1]),
+            token[start : end + 1],
             tokenizer,
         )
-        # print(d["paragraph"][start : -(len(token) - end - 1)])
-        # print(tokenizer.decode(token))
-        # print(answer)
+
         flag = False
         for raw_answer in raw_data[raw_index]["answers"]:
             raw_answer = raw_answer["text"]
@@ -67,7 +64,9 @@ def parse_args() -> Namespace:
     parser.add_argument("data", help="data for testing")
     parser.add_argument("raw_data", help="non preprocessing data")
 
-    parser.add_argument("--backbone", help="Bert backbone", default="bert-base-chinese")
+    parser.add_argument(
+        "--backbone", help="Bert backbone", default="voidful/albert_chinese_large"
+    )
 
     args = parser.parse_args()
     return args

@@ -138,7 +138,7 @@ class MatchDataset(Dataset):
 
 
 if __name__ == "__main__":
-    tokenizer = BertTokenizer.from_pretrained("hfl/chinese-roberta-wwm-ext-large")
+    tokenizer = BertTokenizer.from_pretrained("voidful/albert_chinese_large")
 
     with open("cache/train.json", "r") as f:
         data = json.load(f)

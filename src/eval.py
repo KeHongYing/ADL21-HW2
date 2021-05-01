@@ -12,43 +12,41 @@ from tqdm import tqdm
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('data_path', type=Path, help='Original data JSON file')
-    parser.add_argument('prediction_path', type=Path, help='Model prediction JSON file')
-    parser.add_argument('output_path', type=Path, help='Evaluation result save file')
+    parser.add_argument("data_path", type=Path, help="Original data JSON file")
+    parser.add_argument("prediction_path", type=Path, help="Model prediction JSON file")
+    parser.add_argument("output_path", type=Path, help="Evaluation result save file")
     args = parser.parse_args()
 
     return vars(args)
 
 
 def load_json(json_path):
-    print(f'[*] Loading {json_path}...', end='', flush=True)
+    print(f"[*] Loading {json_path}...", end="", flush=True)
     with open(json_path) as f:
         result = json.load(f)
-    print('done')
+    print("done")
 
     return result
 
 
 def save_json(data, json_path):
-    print(f'[*] Saving to {json_path}...', end='', flush=True)
-    with open(json_path, 'w') as f:
+    print(f"[*] Saving to {json_path}...", end="", flush=True)
+    with open(json_path, "w") as f:
         json.dump(data, f)
-    print('done')
+    print("done")
 
 
 def collect_answers(data):
     answers = {}
     for qa in data:
-        answers[qa['id']] = {
-            'answers': [a['text'] for a in qa['answers']]
-        }
+        answers[qa["id"]] = {"answers": [a["text"] for a in qa["answers"]]}
 
     return answers
 
 
 class Tokenizer:
     def __init__(self):
-        self.nlp = spacy.load('zh_core_web_md', disable=['ner', 'parser', 'tagger'])
+        self.nlp = spacy.load("zh_core_web_md", disable=["ner", "parser", "tagger"])
 
     def __call__(self, text, remove_punc=False):
         tokens = list(self.nlp(text))
@@ -60,7 +58,7 @@ class Tokenizer:
 
 def compute_em(ans, pred):
     def em(a, p):
-        return int(''.join(a) == ''.join(p))
+        return int("".join(a) == "".join(p))
 
     return max([em(a, pred) for a in ans])
 
@@ -83,27 +81,37 @@ def compute_metric(ans, pred, tokenizer):
     ans = [tokenizer(a, remove_punc=True) for a in ans]
     pred = tokenizer(pred, remove_punc=True)
 
-    return {
-        'em': compute_em(ans, pred),
-        'f1': compute_f1(ans, pred)
-    }
+    return {"em": compute_em(ans, pred), "f1": compute_f1(ans, pred)}
 
 
 def compute_metrics(answers, predictions, tokenizer):
     metrics = []
-    for id_ in tqdm(list(answers.keys()), desc='[*] Evaluating', dynamic_ncols=True):
+    wrong = []
+    for id_ in tqdm(list(answers.keys()), desc="[*] Evaluating", dynamic_ncols=True):
         if id_ not in predictions:
-            print(f'[!] Cannot find answer for id {id_} in model predictions')
+            print(f"[!] Cannot find answer for id {id_} in model predictions")
             continue
         prediction = predictions[id_]
-        metric = compute_metric(answers[id_]['answers'], prediction, tokenizer)
+        metric = compute_metric(answers[id_]["answers"], prediction, tokenizer)
         metrics.append(metric)
+
+        if metric["em"] == 0:
+            wrong.append(
+                {
+                    "id": id_,
+                    "expected answer": answers[id_]["answers"],
+                    "your answer": prediction,
+                }
+            )
+
+    with open("wrong.json", "w") as f:
+        json.dump(wrong, f, ensure_ascii=False, indent=4)
 
     n_total = len(metrics)
     result = {
-        'count': n_total,
-        'em': sum([m['em'] for m in metrics]) / n_total,
-        'f1': sum([m['f1'] for m in metrics]) / n_total
+        "count": n_total,
+        "em": sum([m["em"] for m in metrics]) / n_total,
+        "f1": sum([m["f1"] for m in metrics]) / n_total,
     }
 
     return result
@@ -111,12 +119,12 @@ def compute_metrics(answers, predictions, tokenizer):
 
 def main(data_path, prediction_path, output_path):
     # Surpress TensorFlow and OpenMP messages
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     os.environ["KMP_WARNINGS"] = "FALSE"
 
-    print(f'[-] Original data file: {data_path}')
-    print(f'[-] Model prediction file: {prediction_path}')
-    print(f'[-] Evaluation output path: {output_path}\n')
+    print(f"[-] Original data file: {data_path}")
+    print(f"[-] Model prediction file: {prediction_path}")
+    print(f"[-] Evaluation output path: {output_path}\n")
 
     # Load gold answers
     data = load_json(data_path)

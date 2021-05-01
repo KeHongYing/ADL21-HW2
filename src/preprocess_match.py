@@ -25,15 +25,6 @@ def train_val_split(data, test_size=0.2, shuffle=True):
     return train, val
 
 
-def find_end_index(paragraph: str, head: int, context_len: int) -> int:
-    tail = min(head + context_len, len(paragraph))
-
-    while head < tail and paragraph[tail - 1] != mark:
-        tail -= 1
-
-    return tail if head < tail else len(paragraph)
-
-
 def construct_mark_table(paragraph):
     pos = -1
     ret = []
@@ -111,7 +102,7 @@ def main(args):
                 paragraph_index.append(d["paragraphs"][idx])
                 tokens.append(tokenizer.convert_tokens_to_ids(token))
                 paragraph_start_end.append([start, end])
-                raw_paragraph.append(p[head : tail])
+                raw_paragraph.append(p[head:tail])
 
                 prev_token_len += len(token)
                 head = tail
@@ -174,7 +165,10 @@ def parse_args() -> Namespace:
     parser.add_argument("--max_len", type=int, help="token max length.", default=512)
     # model
     parser.add_argument(
-        "--backbone", help="bert backbone", type=str, default="bert-base-chinese"
+        "--backbone",
+        help="bert backbone",
+        type=str,
+        default="voidful/albert_chinese_large",
     )
     args = parser.parse_args()
     return args
