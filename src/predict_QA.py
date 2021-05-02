@@ -103,7 +103,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--pred_file", type=Path, default="output.json")
 
     # data loader
-    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=32)
 
     parser.add_argument(
         "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cpu"

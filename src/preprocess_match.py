@@ -1,7 +1,7 @@
 import json
 import random
-
 import logging
+from typing import List, Dict
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
@@ -15,7 +15,9 @@ logging.basicConfig(
 )
 
 
-def train_val_split(data, test_size=0.2, shuffle=True):
+def train_val_split(
+    data: List[Dict], test_size: float = 0.2, shuffle: bool = True
+) -> (List[Dict], List[Dict]):
     if shuffle:
         random.shuffle(data)
 
@@ -25,7 +27,7 @@ def train_val_split(data, test_size=0.2, shuffle=True):
     return train, val
 
 
-def construct_mark_table(paragraph):
+def construct_mark_table(paragraph: str) -> List[int]:
     pos = -1
     ret = []
     mark = set(["。", "！", "？", "；"])
