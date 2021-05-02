@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
-from transformers import BertTokenizer
+from transformers import AutoTokenizer
 from tqdm import tqdm
 
 from dataset import MatchDataset
@@ -16,7 +16,7 @@ SPLITS = [TRAIN, DEV]
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained(args.backbone)
+    tokenizer = AutoTokenizer.from_pretrained(args.backbone)
     data = json.loads(args.test_file.read_text())
     dataset = MatchDataset(data, tokenizer)
     dataloader = DataLoader(
@@ -87,9 +87,9 @@ def parse_args() -> Namespace:
     )
     parser.add_argument(
         "--backbone",
-        help="bert backbone",
+        help="xlnet backbone",
         type=str,
-        default="voidful/albert_chinese_large",
+        default="hfl/chinese-xlnet-base",
     )
 
     args = parser.parse_args()

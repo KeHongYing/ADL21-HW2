@@ -6,7 +6,7 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
 from tqdm.auto import tqdm
-from transformers import BertTokenizer
+from transformers import AutoTokenizer
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -48,31 +48,20 @@ def main(args):
     with open(args.data_dir / args.data, "r") as f:
         data = json.load(f)
 
-    tokenizer = BertTokenizer.from_pretrained(args.backbone)
-    max_len = args.max_len - 2
+    tokenizer = AutoTokenizer.from_pretrained(args.backbone, use_fast=True)
+    max_len = args.max_len - 3
 
     output = []
     mark = set(["。", "！", "？", "；"])
+    test_file = []
     for d in tqdm(data, desc="preprocessing data..."):
         Id = d["id"]
-        question = tokenizer.encode(d["question"])
+        question = [tokenizer.bos_token_id] + tokenizer.encode(d["question"])
 
         paragraph = [
             context[context_idx] + ("。" if context[context_idx][-1] not in mark else "")
             for context_idx in d["paragraphs"]
         ]
-
-        start_list = []
-        len_list = []
-        if "answers" in d:
-            for ans in d["answers"]:
-                ans_token = tokenizer.tokenize(ans["text"])
-                start_token_pos = len(
-                    tokenizer.tokenize(context[d["relevant"]][: ans["start"]])
-                )
-
-                start_list.append(start_token_pos)
-                len_list.append(len(ans_token))
 
         context_len = max_len - len(question)
         paragraph_index = []
@@ -84,30 +73,55 @@ def main(args):
         for idx, p in enumerate(paragraph):
             mark_list = construct_mark_table(p)
             head = 0
-            prev_token_len = 0
             while head < len(p):
                 tail = mark_list[min(head + context_len, len(p)) - 1] + 1
                 tail = tail if tail != head else head + context_len
-                token = tokenizer.tokenize(p[head:tail])
+                token = tokenizer(p[head:tail], return_offsets_mapping=True)
                 start, end = -1, -1
-                if idx == d["paragraphs"].index(d["relevant"]):
-                    for s, l in zip(start_list, len_list):
-                        if prev_token_len <= s < prev_token_len + len(token):
-                            start = s - prev_token_len
-                            end = min(start + l, len(token)) - 1
+                if idx == d["paragraphs"].index(d["relevant"]) and "answers" in d:
+                    for i, (s, e) in enumerate(token["offset_mapping"]):
+                        for ans in d["answers"]:
+                            if head + s <= ans["start"] < head + e:
+                                start = i
+                                break
+                        if start != -1:
+                            expected_ans = ans["text"]
+                            break
+
+                    for i, (s, e) in enumerate(token["offset_mapping"]):
+                        for ans in d["answers"]:
+                            if (
+                                head + s
+                                <= ans["start"] + len(ans["text"]) - 1
+                                < head + e
+                            ):
+                                end = i
+                                break
+                        if end != -1:
+                            break
 
                 if start != -1:
                     relevant_index.append(len(paragraph_index))
+                    end = len(token["input_ids"]) - 2 - 1 if end == -1 else end
                 else:
                     irrelevant_index.append(len(paragraph_index))
 
                 paragraph_index.append(d["paragraphs"][idx])
-                tokens.append(tokenizer.convert_tokens_to_ids(token))
+                tokens.append(token["input_ids"][:-2])
                 paragraph_start_end.append([start, end])
                 raw_paragraph.append(p[head:tail])
 
-                prev_token_len += len(token)
                 head = tail
+
+                if start != -1:
+                    test_file.append(
+                        {
+                            "expected_ans": expected_ans,
+                            "your_ans": tokenizer.decode(
+                                token["input_ids"][start : end + 1]
+                            ),
+                        }
+                    )
 
         output.append(
             {
@@ -132,6 +146,9 @@ def main(args):
     else:
         with open(args.output_dir / args.data, "w") as f:
             json.dump(output, f, ensure_ascii=False, indent=4)
+
+    with open("xlnet_ans.json", "w") as f:
+        json.dump(test_file, f, ensure_ascii=False, indent=4)
 
 
 def parse_args() -> Namespace:
@@ -168,9 +185,9 @@ def parse_args() -> Namespace:
     # model
     parser.add_argument(
         "--backbone",
-        help="bert backbone",
+        help="xlnet backbone",
         type=str,
-        default="voidful/albert_chinese_large",
+        default="hfl/chinese-xlnet-base",
     )
     args = parser.parse_args()
     return args

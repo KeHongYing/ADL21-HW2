@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
-from transformers import BertTokenizer
+from transformers import AutoTokenizer
 from tqdm import tqdm
 from typing import List
 
@@ -16,31 +16,15 @@ DEV = "val"
 SPLITS = [TRAIN, DEV]
 
 
-def reconstruct(paragraph: str, token: List[int], tokenizer: BertTokenizer) -> str:
-    start, end = 0, len(paragraph)
-    target = " ".join(map(str, token))
-
-    while start < end:
-        t = tokenizer.encode(paragraph[start:end])[1:-1]
-        t_str = " ".join(map(str, t))
-
-        is_start_with_target = t_str.startswith(target)
-        is_end_with_targert = t_str.endswith(target)
-        if not is_start_with_target:
-            start += 1
-        if not is_end_with_targert:
-            end -= 1
-
-        if is_start_with_target and is_end_with_targert:
-            if t_str == target:
-                break
-            end -= 1
-
-    return paragraph[start:end].strip()
+def reconstruct(paragraph: str, start: int, end: int, tokenizer: AutoTokenizer) -> str:
+    token = tokenizer(paragraph, return_offsets_mapping=True)
+    head = token["offset_mapping"][start][0]
+    tail = token["offset_mapping"][end][1]
+    return "".join(paragraph[head:tail]).strip()
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained(args.backbone)
+    tokenizer = AutoTokenizer.from_pretrained(args.backbone, use_fast=True)
     data = json.loads(args.test_file.read_text())
     dataset = QADataset(data, tokenizer)
     dataloader = DataLoader(
@@ -113,7 +97,7 @@ def parse_args() -> Namespace:
         "--backbone",
         help="bert backbone",
         type=str,
-        default="voidful/albert_chinese_large",
+        default="hfl/chinese-xlnet-base",
     )
     args = parser.parse_args()
     return args

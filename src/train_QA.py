@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from transformers import BertTokenizer
+from transformers import AutoTokenizer
 
 from dataset import QADataset
 from model import QAClassifier
@@ -79,7 +79,7 @@ def iter_loop(dataloader, model, loss_fn, optimizer, device, mode):
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained(args.backbone)
+    tokenizer = AutoTokenizer.from_pretrained(args.backbone, use_fast=True)
     data_paths = {split: args.cache_dir / f"{split}.json" for split in SPLITS}
     data = {split: json.loads(path.read_text()) for split, path in data_paths.items()}
     datasets: Dict[str, QADataset] = {
@@ -178,7 +178,7 @@ def parse_args() -> Namespace:
 
     # optimizer
     parser.add_argument("--lr", type=float, default=1e-5)
-    parser.add_argument("--weight_decay", type=float, default=5e-3)
+    parser.add_argument("--weight_decay", type=float, default=5e-4)
 
     # data loader
     parser.add_argument("--batch_size", type=int, default=128)
@@ -195,9 +195,9 @@ def parse_args() -> Namespace:
     # model
     parser.add_argument(
         "--backbone",
-        help="bert backbone",
+        help="xlnet backbone",
         type=str,
-        default="voidful/albert_chinese_large",
+        default="hfl/chinese-xlnet-base",
     )
     args = parser.parse_args()
 

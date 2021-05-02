@@ -2,7 +2,7 @@ import json
 import logging
 from argparse import ArgumentParser, Namespace
 
-from transformers import BertTokenizer
+from transformers import AutoTokenizer
 from tqdm.auto import tqdm
 
 from predict_QA import reconstruct
@@ -21,23 +21,20 @@ def main(args):
         raw_data = json.load(f)
 
     cnt = 0
-    tokenizer = BertTokenizer.from_pretrained(args.backbone)
+    tokenizer = AutoTokenizer.from_pretrained(args.backbone)
     raw_index = 0
     for d in tqdm(data, desc="reconstring..."):
         while d["id"] != raw_data[raw_index]["id"]:
             raw_index += 1
 
-        head = d["token"].index(tokenizer.sep_token_id) + 1
+        head = d["token"].index(tokenizer.sep_token_id) + 2
 
         start, end = d["start_end"][0], d["start_end"][1]
         token = d["token"][head:]
         answer = reconstruct(
-            d["paragraph"][
-                start : -(len(token) - end - 2)
-                if (len(token) - end - 2) > 0
-                else len(d["paragraph"])
-            ],
-            token[start : end + 1],
+            d["paragraph"],
+            start,
+            end,
             tokenizer,
         )
 
@@ -65,7 +62,7 @@ def parse_args() -> Namespace:
     parser.add_argument("raw_data", help="non preprocessing data")
 
     parser.add_argument(
-        "--backbone", help="Bert backbone", default="voidful/albert_chinese_large"
+        "--backbone", help="Auto backbone", default="hfl/chinese-xlnet-base"
     )
 
     args = parser.parse_args()
