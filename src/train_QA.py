@@ -178,7 +178,7 @@ def parse_args() -> Namespace:
 
     # optimizer
     parser.add_argument("--lr", type=float, default=1e-5)
-    parser.add_argument("--weight_decay", type=float, default=5e-3)
+    parser.add_argument("--weight_decay", type=float, default=5e-4)
 
     # data loader
     parser.add_argument("--batch_size", type=int, default=128)

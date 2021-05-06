@@ -26,7 +26,7 @@ def main(args):
     model = MatchClassifier(args.backbone).to(args.device)
     model.eval()
 
-    ckpt = torch.load(args.ckpt_path)
+    ckpt = torch.load(args.ckpt_path, map_location=args.device)
     model.load_state_dict(ckpt)
 
     result = []
