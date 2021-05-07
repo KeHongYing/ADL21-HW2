@@ -1,4 +1,5 @@
 import json
+import pickle
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
@@ -40,14 +41,16 @@ def reconstruct(paragraph: str, token: List[int], tokenizer: BertTokenizer) -> s
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained(args.backbone)
+    with open(args.tokenizer, "rb") as f:
+        tokenizer = pickle.load(f)
+
     data = json.loads(args.test_file.read_text())
     dataset = QADataset(data, tokenizer)
     dataloader = DataLoader(
         dataset, batch_size=args.batch_size, collate_fn=dataset.collate_fn
     )
 
-    model = QAClassifier(args.backbone).to(args.device)
+    model = QAClassifier(config=args.config).to(args.device)
     model.eval()
 
     ckpt = torch.load(args.ckpt_path, map_location=args.device)
@@ -110,11 +113,12 @@ def parse_args() -> Namespace:
     )
     # model
     parser.add_argument(
-        "--backbone",
-        help="bert backbone",
+        "--config",
+        help="bert config",
         type=str,
-        default="voidful/albert_chinese_large",
+        default=None,
     )
+    parser.add_argument("--tokenizer", help="tokenizer path", required=True)
     args = parser.parse_args()
     return args
 

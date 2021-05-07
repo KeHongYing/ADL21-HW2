@@ -113,8 +113,10 @@ class MatchDataset(Dataset):
         context_index = []
         Id = []
         paragraph = []
+        question = []
 
         for s in samples:
+            question.append(s["raw_question"])
             for idx, paragraph_idx in enumerate(
                 s["irrelevant_index"] + s["relevant_index"]
             ):
@@ -134,6 +136,7 @@ class MatchDataset(Dataset):
             "label": torch.tensor(label, dtype=torch.float),
             "context_index": context_index,
             "paragraph": paragraph,
+            "question": question,
         }
 
 

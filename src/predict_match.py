@@ -1,4 +1,5 @@
 import json
+import pickle
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
@@ -16,14 +17,21 @@ SPLITS = [TRAIN, DEV]
 
 
 def main(args):
-    tokenizer = BertTokenizer.from_pretrained(args.backbone)
+    with open(args.tokenizer, "rb") as f:
+        tokenizer = pickle.load(f)
+
+    if args.QA_tokenizer is None:
+        QA_tokenizer = tokenizer
+    else:
+        QA_tokenizer = pickle.load(open(args.QA_tokenizer, "rb"))
+
     data = json.loads(args.test_file.read_text())
     dataset = MatchDataset(data, tokenizer)
     dataloader = DataLoader(
         dataset, batch_size=args.batch_size, collate_fn=dataset.predict_collate_fn
     )
 
-    model = MatchClassifier(args.backbone).to(args.device)
+    model = MatchClassifier(config=args.config).to(args.device)
     model.eval()
 
     ckpt = torch.load(args.ckpt_path, map_location=args.device)
@@ -45,9 +53,10 @@ def main(args):
                 relevant = data["context_index"][idx]
 
                 paragraph = data["paragraph"][idx]
-                token = token[idx].tolist()
-                end_idx = token.index(tokenizer.pad_token_id)
-                token = token[: end_idx if end_idx != -1 else len(token)]
+                question = data["question"]
+                token = (
+                    QA_tokenizer.encode(question) + QA_tokenizer.encode(paragraph)[1:-1]
+                )
 
                 result.append(
                     {
@@ -86,10 +95,14 @@ def parse_args() -> Namespace:
         "--device", type=torch.device, help="cpu, cuda, cuda:0, cuda:1", default="cpu"
     )
     parser.add_argument(
-        "--backbone",
-        help="bert backbone",
-        type=str,
-        default="voidful/albert_chinese_large",
+        "--config",
+        help="bert config",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument("--tokenizer", help="tokenizer path", type=Path, required=True)
+    parser.add_argument(
+        "--QA_tokenizer", help="QA tokenizer path", type=Path, default=None
     )
 
     args = parser.parse_args()

@@ -1,4 +1,5 @@
 import json
+import pickle
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Dict
@@ -87,7 +88,9 @@ def main(args):
 
     torch.manual_seed(args.seed)
 
-    model = MatchClassifier(model_name=args.backbone).to(args.device)
+    model = MatchClassifier(
+        model_name=args.backbone, no_pretrained=args.no_pretrained
+    ).to(args.device)
 
     optimizer = torch.optim.AdamW(
         params=model.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -99,9 +102,16 @@ def main(args):
     loss_fn = torch.torch.nn.BCELoss()
     max_acc, min_loss = 0, 100
     early_stop = 0
+
     backbone = (
         args.backbone if "/" not in args.backbone else args.backbone.split("/")[1]
     )
+    ckpt_dir = args.ckpt_dir / backbone
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(ckpt_dir / f"{args.model}_config.pkl", "wb") as f:
+        pickle.dump(model.backbone.config, f)
+
     for epoch in range(args.num_epoch):
         print(f"Epoch: {epoch + 1}")
         iter_loop(dataloader[TRAIN], model, loss_fn, optimizer, args.device, TRAIN)
@@ -115,11 +125,9 @@ def main(args):
             max_acc = acc
             torch.save(
                 model.state_dict(),
-                args.ckpt_dir / f"{args.model}_{backbone}_best.pt",
+                ckpt_dir / f"{args.model}_best.pt",
             )
-            print(
-                f"model is better than before, save model to {args.model}_{backbone}_best.pt"
-            )
+            print(f"model is better than before, save model to {args.model}_best.pt")
 
         if loss > min_loss:
             early_stop += 1
@@ -132,10 +140,10 @@ def main(args):
             break
 
     print(f"Done! Best model Acc: {(100 * max_acc):>.4f}%")
-    torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}_{backbone}.pt")
+    torch.save(model.state_dict(), ckpt_dir / f"{args.model}.pt")
 
     with open("result_match.txt", "a") as f:
-        f.write(f"{args.model}_{backbone}, {max_acc:>5f}\n")
+        f.write(f"{backbone}/{args.model}, {max_acc:>5f}\n")
 
 
 def parse_args() -> Namespace:
@@ -186,7 +194,10 @@ def parse_args() -> Namespace:
         "--backbone",
         help="bert backbone",
         type=str,
-        default="voidful/albert_chinese_large",
+        default=None,
+    )
+    parser.add_argument(
+        "--no_pretrained", help="do not use pretrained weight", action="store_true"
     )
 
     args = parser.parse_args()
@@ -196,5 +207,4 @@ def parse_args() -> Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    args.ckpt_dir.mkdir(parents=True, exist_ok=True)
     main(args)

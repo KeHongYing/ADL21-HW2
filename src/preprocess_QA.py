@@ -1,5 +1,6 @@
 import json
 import random
+import pickle
 
 import logging
 from argparse import ArgumentParser, Namespace
@@ -19,16 +20,19 @@ def main(args):
     with open(args.data_dir / args.data, "r") as f:
         data = json.load(f)
 
+    with open(args.tokenizer, "rb") as f:
+        tokenizer = pickle.load(f)
+
     output = []
     for d in tqdm(data, desc="preprocessing data..."):
         Id = d["id"]
-        question = d["question"]
+        question = d["raw_question"]
 
         for idx, (s, e) in enumerate(d["start_end"]):
             if s != -1:
-                token = question + d["token"][idx]
-                relevant = d["paragraph_index"][idx]
                 paragraph = d["raw_paragraph"][idx]
+                token = tokenizer.encode(question) + tokenizer.encode(paragraph)[1:-1]
+                relevant = d["paragraph_index"][idx]
 
                 output.append(
                     {
@@ -69,6 +73,7 @@ def parse_args() -> Namespace:
         "--training", help="preprocess training data or not", action="store_true"
     )
     parser.add_argument("--max_len", type=int, help="token max length.", default=512)
+    parser.add_argument("--tokenizer", type=str, help="tokenizer path.", required=True)
     args = parser.parse_args()
     return args
 

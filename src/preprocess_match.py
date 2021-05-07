@@ -1,6 +1,7 @@
 import json
 import random
 import logging
+import pickle
 from typing import List, Dict
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
@@ -48,7 +49,11 @@ def main(args):
     with open(args.data_dir / args.data, "r") as f:
         data = json.load(f)
 
-    tokenizer = BertTokenizer.from_pretrained(args.backbone)
+    if args.tokenizer is None:
+        tokenizer = BertTokenizer.from_pretrained(args.backbone)
+    else:
+        tokenizer = pickle.load(open(args.tokenizer, "rb"))
+
     max_len = args.max_len - 2
 
     output = []
@@ -119,8 +124,17 @@ def main(args):
                 "relevant_index": relevant_index,
                 "irrelevant_index": irrelevant_index,
                 "raw_paragraph": raw_paragraph,
+                "raw_question": d["question"],
             }
         )
+
+    backbone = (
+        args.backbone if "/" not in args.backbone else args.backbone.split("/")[1]
+    )
+
+    if args.tokenizer is None:
+        with open(args.tokenizer_dir / Path(f"{backbone}.pkl"), "wb") as f:
+            pickle.dump(tokenizer, f)
 
     if args.training:
         train, val = train_val_split(output, test_size=0.1)
@@ -172,6 +186,20 @@ def parse_args() -> Namespace:
         type=str,
         default="voidful/albert_chinese_large",
     )
+    # tokenizer
+    parser.add_argument(
+        "--tokenizer_dir",
+        type=Path,
+        help="Directory to save the tokenizer.",
+        default="./tokenizer",
+    )
+    parser.add_argument(
+        "--tokenizer",
+        type=str,
+        help="tokenizer path.",
+        default=None,
+    )
+
     args = parser.parse_args()
     return args
 
@@ -179,4 +207,5 @@ def parse_args() -> Namespace:
 if __name__ == "__main__":
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    args.tokenizer_dir.mkdir(parents=True, exist_ok=True)
     main(args)
