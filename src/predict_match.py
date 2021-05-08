@@ -5,7 +5,6 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
-from transformers import BertTokenizer
 from tqdm import tqdm
 
 from dataset import MatchDataset
