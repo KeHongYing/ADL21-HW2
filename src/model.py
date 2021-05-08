@@ -15,7 +15,12 @@ class QAClassifier(torch.nn.Module):
             self.backbone = AutoModel.from_pretrained(model_name)
             if no_pretrained:
                 print("no_pretrianed")
+                self.backbone.config.__dict__["num_hidden_layers"] = 4
+                self.backbone.config.__dict__["hidden_size"] = 256
+                self.backbone.config.__dict__["num_attention_heads"] = 4
+                self.backbone.config.__dict__["pooler_num_attention_heads"] = 4
                 self.backbone = AutoModel.from_config(self.backbone.config)
+                print(self.backbone.config)
         else:
             self.backbone = AutoModel.from_config(
                 pickle.load(open(config, "rb")) if config is not None else BertConfig()
@@ -39,6 +44,10 @@ class MatchClassifier(torch.nn.Module):
             self.backbone = AutoModel.from_pretrained(model_name)
             if no_pretrained:
                 print("no_pretrianed")
+                self.backbone.config.__dict__["num_hidden_layers"] = 4
+                self.backbone.config.__dict__["hidden_size"] = 256
+                self.backbone.config.__dict__["num_attention_heads"] = 4
+                self.backbone.config.__dict__["pooler_num_attention_heads"] = 4
                 self.backbone = AutoModel.from_config(self.backbone.config)
         else:
             self.backbone = AutoModel.from_config(

@@ -53,7 +53,7 @@ def main(args):
                 relevant = data["context_index"][idx]
 
                 paragraph = data["paragraph"][idx]
-                question = data["question"]
+                question = data["question"][0]
                 token = (
                     QA_tokenizer.encode(question) + QA_tokenizer.encode(paragraph)[1:-1]
                 )
@@ -111,4 +111,5 @@ def parse_args() -> Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
+    args.cache_dir.mkdir(parents=True, exist_ok=True)
     main(args)
